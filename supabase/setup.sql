@@ -85,11 +85,21 @@ $$;
 
 -- ---------- Funciones para Atajos de Apple ----------
 
+-- Responden texto limpio (sin comillas) para que Siri y Atajos lo lean directo.
+do $$ begin
+  create domain "text/plain" as text;
+exception when duplicate_object then null;
+end $$;
+
+drop function if exists public.atajo_gasto(text, text, text, text, text, text);
+drop function if exists public.atajo_resumen(text);
+drop function if exists public.atajo_alcanza(text, text, text, text);
+
 -- Anota un gasto. Devuelve un mensaje para mostrar o decir en voz alta.
 create or replace function public.atajo_gasto(
   clave text, monto text, concepto text default null, presupuesto text default null,
   cuenta text default null, moneda text default 'COP'
-) returns text
+) returns "text/plain"
 language plpgsql security definer set search_path = '' as $$
 declare
   r public.finanzas%rowtype;
@@ -131,7 +141,7 @@ begin
 end $$;
 
 -- "¿Cuánto tengo libre?"
-create or replace function public.atajo_resumen(clave text) returns text
+create or replace function public.atajo_resumen(clave text) returns "text/plain"
 language plpgsql security definer set search_path = '' as $$
 declare
   r public.finanzas%rowtype; libre numeric; nx jsonb; msg text;
@@ -149,7 +159,7 @@ begin
 end $$;
 
 -- "¿Me alcanza para…?"
-create or replace function public.atajo_alcanza(clave text, monto text, presupuesto text default null, moneda text default 'COP') returns text
+create or replace function public.atajo_alcanza(clave text, monto text, presupuesto text default null, moneda text default 'COP') returns "text/plain"
 language plpgsql security definer set search_path = '' as $$
 declare
   r public.finanzas%rowtype;

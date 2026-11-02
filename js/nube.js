@@ -47,7 +47,7 @@ export function atajosSection() {
   const urlBox = name => `<div class="code-row"><code>${RPC(name)}</code>${copyBtn(RPC(name))}</div>`;
   const common = name => `
     ${step('·', `Acción <b>Obtener contenido de URL</b>, con esta dirección: ${urlBox(name)}`)}
-    ${step('·', `Toca <b>Mostrar más</b>. Método: <b>POST</b>. Encabezados: <code>apikey</code> = <code class="wrap">${sync.SUPABASE_KEY}</code> ${copyBtn(sync.SUPABASE_KEY)}`)}
+    ${step('·', `Toca <b>Mostrar más</b>. Método: <b>POST</b>. Agrega dos encabezados:<br><code>apikey</code> = <code class="wrap">${sync.SUPABASE_KEY}</code> ${copyBtn(sync.SUPABASE_KEY)}<br><code>Accept</code> = <code>text/plain</code> (para que la respuesta llegue limpia)`)}
     ${step('·', `Cuerpo de la solicitud: <b>JSON</b>. Agrega el campo <code>clave</code> (texto) con tu clave ${copyBtn(key, 'Copiar clave')}`)}`;
 
   return `
