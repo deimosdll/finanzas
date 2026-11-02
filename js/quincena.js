@@ -135,7 +135,14 @@ export function goalSaved(s, g) {
       total += c.amount ?? planned;
     }
   }
-  for (const m of s.movements) if (m.kind === 'ahorro' && m.goalId === g.id && m.done) total += m.amount;
+  for (const m of s.movements) {
+    if (m.kind === 'ahorro' && m.goalId === g.id && m.done) total += m.amount;
+    if (m.kind === 'ingreso' && m.done && m.pocket === `goal:${g.id}`) total += m.amount;
+    if (m.kind === 'mover') {
+      if (m.to === `goal:${g.id}`) total += m.amount;
+      if (m.from === `goal:${g.id}`) total -= m.amount;
+    }
+  }
   return total;
 }
 
@@ -189,6 +196,15 @@ export function startOf(s, q, depth = 0) {
   return { value: 0, set: false, carried: false };
 }
 
+// Bolsillos: 'libre', 'budget:<id>' o 'goal:<id>'.
+export function pocketName(s, p) {
+  if (!p || p === 'libre') return 'Libre';
+  const [type, id] = p.split(':');
+  if (type === 'budget') return s.budgets.find(b => b.id === id)?.name || 'Presupuesto';
+  if (type === 'goal') return (s.goals || []).find(g => g.id === id)?.name || 'Meta';
+  return 'Libre';
+}
+
 export function build(s, q, depth = 0) {
   const r = qRange(q);
   const rec = s.quincenas[q] || {};
@@ -213,6 +229,21 @@ export function build(s, q, depth = 0) {
   });
   const movs = s.movements.filter(m => m.date >= r.start && m.date <= r.end);
 
+  // Bolsillos: plata que entra directo a un presupuesto o meta, o que pasas de uno a otro.
+  const moved = { budget: {}, goal: {} };
+  const addPocket = (p, v) => {
+    if (!p || p === 'libre') return;
+    const [type, id] = p.split(':');
+    if (moved[type]) moved[type][id] = (moved[type][id] || 0) + v;
+  };
+  for (const m of movs) {
+    if (m.kind === 'ingreso') addPocket(m.pocket, m.amount);
+    if (m.kind === 'mover') { addPocket(m.from, -m.amount); addPocket(m.to, m.amount); }
+  }
+  const transfers = movs.filter(m => m.kind === 'mover').map(m => ({
+    ...m, fromName: pocketName(s, m.from), toName: pocketName(s, m.to),
+  }));
+
   // Ingresos
   const incomes = [];
   for (const inc of s.incomes) {
@@ -222,7 +253,11 @@ export function build(s, q, depth = 0) {
       incomes.push(item(`inc:${inc.id}:${date}`, date, inc.name, inc.accountId, Number(inc.amount) || 0, { type: 'income', id: inc.id }));
     }
   }
-  movs.filter(m => m.kind === 'ingreso').forEach(m => incomes.push(movItem(m)));
+  movs.filter(m => m.kind === 'ingreso').forEach(m => {
+    const it = movItem(m);
+    if (m.pocket && m.pocket !== 'libre') it.pocket = pocketName(s, m.pocket);
+    incomes.push(it);
+  });
 
   // Pagos: fijos, deudas, cuotas de manejo y pagos sueltos de esta quincena
   const payments = [];
@@ -276,9 +311,11 @@ export function build(s, q, depth = 0) {
   const overrides = rec.budgetOverrides || {};
   const gastos = movs.filter(m => m.kind === 'gasto');
   const budgets = s.budgets.filter(b => b.active !== false).map(b => {
-    const amount = overrides[b.id] ?? (Number(b.amount) || 0);
+    const own = overrides[b.id] ?? (Number(b.amount) || 0);
+    const extra = moved.budget[b.id] || 0;
+    const amount = Math.max(0, own + extra);
     const spent = gastos.filter(g => g.budgetId === b.id).reduce((a, g) => a + g.amount, 0);
-    return { id: b.id, name: b.name, amount, base: Number(b.amount) || 0, spent, left: amount - spent };
+    return { id: b.id, name: b.name, amount, own, moved: extra, base: Number(b.amount) || 0, spent, left: amount - spent };
   });
   const budgetIds = new Set(budgets.map(b => b.id));
   const loose = gastos.filter(g => !budgetIds.has(g.budgetId));
@@ -291,7 +328,8 @@ export function build(s, q, depth = 0) {
   const pagos = sum(payments, x => x.amount);
   const presupuestos = sum(budgets, b => Math.max(b.amount, b.spent));
   const sueltos = sum(loose, g => g.amount);
-  const ahorro = sum(savings, x => x.amount);
+  const alMetas = Object.values(moved.goal).reduce((a, v) => a + v, 0);
+  const ahorro = sum(savings, x => x.amount) + alMetas;
   const sobrante = start.value + ingresos - pagos - presupuestos - sueltos - ahorro;
 
   // Apartados: montos fijos, o "todo lo que sobre" (se ajusta solo si algo cambia, como el dólar).
@@ -307,8 +345,9 @@ export function build(s, q, depth = 0) {
 
   return {
     q, range: r, rec, start,
-    incomes, payments, savings, budgets, gastos, loose, reserves, tasks,
+    incomes, payments, savings, budgets, gastos, loose, reserves, tasks, transfers, moved,
     totals: {
+      alMetas,
       inicio: start.value, ingresos, pagos, presupuestos, sueltos, ahorro, apartado, sobrante,
       libre: sobrante - apartado,
       porPagar: sum(payments.filter(p => !p.done), p => p.amount),

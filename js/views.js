@@ -1,10 +1,10 @@
 // Las 4 pantallas (Quincena, ¿Me alcanza?, Plan, Cuentas) y lo que pasa al tocar cada cosa.
 
 import { fmt, fmtUsd, fmtDate, esc, today, iso, parseMoney, fmtPlain } from './money.js';
-import { qOf, qShift, qTitle, qSubtitle, build, afford, debtStatus, monthlyFixed, ensureRec, toCop, goalStatus } from './quincena.js';
+import { qOf, qShift, qTitle, qSubtitle, build, afford, debtStatus, monthlyFixed, ensureRec, toCop, goalStatus, goalSaved, pocketName } from './quincena.js';
 import { inicioView } from './inicio.js';
 import { nubeSection, atajosSection, nubeActions } from './nube.js';
-import { openForm, toast } from './forms.js';
+import { openForm, openMenu, toast } from './forms.js';
 import { uid, exportJson, parseImport, emptyState } from './store.js';
 
 // ---------- Piezas comunes ----------
@@ -27,7 +27,8 @@ const currencyOptions = [{ value: 'COP', label: 'Pesos (COP)' }, { value: 'USD',
 function lineText(it) {
   const usd = it.currency === 'USD' && it.original ? ` <span class="muted">(${fmtUsd(it.original)})</span>` : '';
   const changed = it.planned != null && it.amount !== it.planned ? ` <span class="muted">· plan ${fmt(it.planned)}</span>` : '';
-  return `<b>${fmtDate(it.date)}</b> – ${esc(it.concept)}${it.account ? ` (${esc(it.account)})` : ''}: ${fmt(it.amount)}${usd}${changed}`;
+  const pocket = it.pocket ? ` <span class="tag pocket">→ ${esc(it.pocket)}</span>` : '';
+  return `<b>${fmtDate(it.date)}</b> – ${esc(it.concept)}${it.account ? ` (${esc(it.account)})` : ''}: ${fmt(it.amount)}${usd}${changed}${pocket}`;
 }
 
 // Pendientes arriba en orden de fecha; lo hecho abajo, bajo "Hecho", también por fecha.
@@ -83,7 +84,8 @@ function quincenaView(ctx) {
       <div class="budget-top"><span class="name">${esc(x.name)}</span>
         <span class="${over ? 'neg' : ''}">${fmt(x.spent)} <span class="muted">de ${fmt(x.amount)}</span></span></div>
       <div class="bar ${over ? 'over' : pct >= 85 ? 'warn' : ''}"><i style="width:${pct}%"></i></div>
-      <div class="budget-foot muted">${over ? `Te pasaste ${fmt(x.spent - x.amount)}` : `Te quedan ${fmt(x.left)}`}${x.amount !== x.base ? ' · cambiado solo esta quincena' : ''}</div>
+      <div class="budget-foot muted">${over ? `Te pasaste ${fmt(x.spent - x.amount)}` : `Te quedan ${fmt(x.left)}`}${
+        x.moved > 0 ? ` · incluye ${fmt(x.moved)} que pasaste aquí` : x.moved < 0 ? ` · sacaste ${fmt(-x.moved)}` : ''}${x.own !== x.base ? ' · cambiado solo esta quincena' : ''}</div>
     </button></li>`;
   }).join('')}</ul>` : `<p class="empty">Aún no tienes presupuestos. Créalos en <a href="#plan">Plan</a> (por ejemplo Mercado o Salidas).</p>`;
 
@@ -95,6 +97,11 @@ function quincenaView(ctx) {
       ${g.currency === 'USD' ? `<span class="muted">(${fmtUsd(g.original)})</span>` : ''}
       <span class="tag">${bud ? esc(bud.name) : 'Sin presupuesto'}</span></button></li>`;
   }).join('')}</ul>` : `<p class="empty">Nada anotado todavía.</p>`;
+
+  const transfers = b.transfers.length ? `<ul class="plain">${[...b.transfers].sort((a, c) => c.date.localeCompare(a.date)).map(m => `
+    <li><button class="line transfer" data-act="mov-edit" data-id="${m.id}">
+      <b>${fmtDate(m.date)}</b> – <span class="flow">${esc(m.fromName)} <span class="arrow">→</span> ${esc(m.toName)}</span>: ${fmt(m.amount)}
+      ${m.concept ? `<span class="muted small block">${esc(m.concept)}</span>` : ''}</button></li>`).join('')}</ul>` : '';
 
   const taskLi = x => `
     <li class="${x.done ? 'done' : ''}" data-flip="task:${x.id}">
@@ -133,7 +140,11 @@ function quincenaView(ctx) {
     <p class="sub">${t.libre < 0
       ? 'No te alcanza para todo lo de esta quincena. Revisa presupuestos o pagos.'
       : 'Ya descontados los pagos, los presupuestos y lo apartado.'}</p>
-    <a class="hero-link" href="#alcanza">¿Me lo puedo permitir? →</a>
+    <div class="hero-actions">
+      <button data-act="mov-add" data-kind="gasto"><span>＋</span>Gasto</button>
+      <button data-act="move-add"><span>⇄</span>Mover plata</button>
+      <a href="#alcanza"><span>?</span>¿Me alcanza?</a>
+    </div>
   </section>
   ${startBanner}
 
@@ -147,7 +158,9 @@ function quincenaView(ctx) {
   ${(b.savings.length || (ctx.s.goals || []).length) ? section('🎯 Ahorro', checklist(b.savings, 'sav', 'Esta quincena no hay aportes a metas.'),
     (ctx.s.goals || []).length ? addBtn('mov-add', '+ Aportar a una meta', 'data-kind="ahorro"') : '') : ''}
 
-  ${section('📊 Presupuestos', budgets)}
+  ${section('📊 Presupuestos', budgets, b.budgets.length ? addBtn('move-add', '⇄ Pasar plata a un presupuesto') : '')}
+
+  ${transfers ? section('🔀 Plata que moviste', transfers, addBtn('move-add', '+ Mover plata')) : ''}
 
   ${section('🧾 Gastos', gastos, addBtn('mov-add', '+ Anotar gasto', 'data-kind="gasto"'))}
 
@@ -175,8 +188,10 @@ function quincenaView(ctx) {
     ${accounts}`)}
 
   <button class="btn ghost wide" data-act="q-review">Marcar revisión de hoy</button>
-  <button class="fab" data-act="mov-add" data-kind="gasto" aria-label="Anotar gasto">+ Gasto</button>`;
+  ${fab()}`;
 }
+
+export const fab = () => `<button class="fab" data-act="add-menu" aria-label="Anotar algo"><span aria-hidden="true">+</span> Anotar</button>`;
 
 // ================================================================
 // 2. ¿ME ALCANZA?
@@ -538,6 +553,7 @@ function budgetForm(ctx, b) {
 const KIND_TITLES = { gasto: 'gasto', ingreso: 'ingreso extra', pago: 'pago de esta quincena', ahorro: 'aporte a una meta' };
 
 function movementForm(ctx, m, kind, preset = {}) {
+  if ((m?.kind || kind) === 'mover') return transferForm(ctx, m, preset);
   const isNew = !m;
   const { s } = ctx;
   m = m ? { ...m } : { kind, date: defaultDate(ctx), currency: 'COP', ...preset };
@@ -550,6 +566,8 @@ function movementForm(ctx, m, kind, preset = {}) {
     { name: 'amount', label: 'Monto', type: 'money', decimal: true, value: m.currency === 'USD' ? m.original : fmtPlain(m.amount), required: true },
   ];
   if (kind === 'gasto') fields.push({ name: 'budgetId', label: 'Presupuesto', type: 'select', value: m.budgetId, options: budgetOptions(s) });
+  if (kind === 'ingreso') fields.push({ name: 'pocket', label: '¿Para qué es esta plata?', type: 'select', value: m.pocket || 'libre',
+    options: pocketOptions(s, build(s, qOf(m.date)), { amounts: false }), hint: 'Si la mandas a un presupuesto, le suma a lo que te queda ahí y no a lo libre.' });
   fields.push(
     { name: 'accountId', label: kind === 'ingreso' || kind === 'ahorro' ? 'Va a la cuenta' : 'Pagado con', type: 'select', value: m.accountId, options: accountOptions(s) },
     { name: 'date', label: 'Fecha', type: 'date', value: m.date, required: true },
@@ -568,6 +586,7 @@ function movementForm(ctx, m, kind, preset = {}) {
         currency: v.currency, original: v.currency === 'USD' ? v.amount : null,
         amount: toCop(v.amount, v.currency, s),
         budgetId: kind === 'gasto' ? v.budgetId : undefined,
+        pocket: kind === 'ingreso' && v.pocket !== 'libre' ? v.pocket : undefined,
         done: kind === 'gasto' ? true : !!v.done,
         separated: kind === 'pago' && !v.done && !!v.separated,
       };
@@ -579,6 +598,73 @@ function movementForm(ctx, m, kind, preset = {}) {
     },
     onDelete: isNew ? null : () => ctx.commit(st => { st.movements = st.movements.filter(x => x.id !== m.id); }),
   });
+}
+
+// Bolsillos para mover plata: lo libre, cada presupuesto y cada meta.
+function pocketOptions(s, b, { amounts = true } = {}) {
+  const libre = b.totals.libre + b.reserves.filter(r => r.all).reduce((a, r) => a + r.amount, 0);
+  return [
+    { value: 'libre', label: amounts ? `Libre para gastar (${fmt(libre)})` : 'Libre para gastar' },
+    ...b.budgets.map(x => ({ value: `budget:${x.id}`, label: amounts ? `${x.name} (quedan ${fmt(Math.max(0, x.left))})` : `Presupuesto: ${x.name}` })),
+    ...(s.goals || []).filter(g => g.active !== false).map(g => ({ value: `goal:${g.id}`, label: amounts ? `Meta: ${g.name} (${fmt(goalSaved(s, g))})` : `Meta: ${g.name}` })),
+  ];
+}
+
+// Cuánto hay en un bolsillo para sacar. "Libre" incluye lo apartado con "todo lo que sobre".
+function available(s, p, date) {
+  const b = build(s, qOf(date));
+  if (p === 'libre') return b.totals.libre + b.reserves.filter(r => r.all).reduce((a, r) => a + r.amount, 0);
+  const [type, id] = p.split(':');
+  if (type === 'budget') return b.budgets.find(x => x.id === id)?.left ?? 0;
+  const g = (s.goals || []).find(x => x.id === id);
+  return g ? goalSaved(s, g) : 0;
+}
+
+// Pasar plata de un bolsillo a otro sin que cuente como gasto.
+function transferForm(ctx, m, preset = {}) {
+  const isNew = !m;
+  const { s } = ctx;
+  m = m ? { ...m } : { kind: 'mover', date: defaultDate(ctx), from: 'libre', ...preset };
+  const opts = pocketOptions(s, build(s, qOf(m.date)));
+  m.to ??= opts.find(o => o.value !== m.from && o.value.startsWith('budget:'))?.value || opts.find(o => o.value !== m.from)?.value;
+  openForm({
+    title: isNew ? 'Mover plata' : 'Plata que moviste',
+    intro: 'Pasa plata de un bolsillo a otro. No es un gasto: solo cambia para qué está. Por ejemplo, de lo libre al mercado.',
+    fields: [
+      { name: 'from', label: 'Sacar de', type: 'select', value: m.from, options: opts },
+      { name: 'to', label: 'Pasar a', type: 'select', value: m.to, options: opts },
+      { name: 'amount', label: 'Cuánto', type: 'money', value: m.amount, required: true },
+      { name: 'date', label: 'Fecha', type: 'date', value: m.date, required: true },
+      { name: 'concept', label: 'Nota (opcional)', value: m.concept, placeholder: 'Lo de la venta, para el mercado' },
+    ],
+    submitLabel: isNew ? 'Mover' : 'Guardar',
+    onSubmit: v => {
+      if (v.from === v.to) return 'Elige dos bolsillos distintos.';
+      const rest = isNew ? s : { ...s, movements: s.movements.filter(x => x.id !== m.id) };
+      const avail = available(rest, v.from, v.date);
+      if (v.amount > avail) return `En ${pocketName(s, v.from)} solo hay ${fmt(Math.max(0, avail))} para mover.`;
+      const data = { kind: 'mover', from: v.from, to: v.to, amount: v.amount, date: v.date, concept: v.concept, currency: 'COP', done: true };
+      ctx.commit(st => {
+        if (isNew) st.movements.push({ id: uid(), ...data });
+        else Object.assign(st.movements.find(x => x.id === m.id), data);
+      });
+      ctx.toast(`Movido: ${fmt(v.amount)} de ${pocketName(s, v.from)} a ${pocketName(s, v.to)}`);
+    },
+    onDelete: isNew ? null : () => ctx.commit(st => { st.movements = st.movements.filter(x => x.id !== m.id); }),
+    deleteLabel: 'Deshacer',
+  });
+}
+
+// Menú del botón "+": todo lo que se puede anotar.
+function addMenu(ctx) {
+  const items = [
+    { icon: '🧾', label: 'Gasto', sub: 'Algo que compraste o pagaste', onClick: () => movementForm(ctx, null, 'gasto') },
+    { icon: '💵', label: 'Ingreso', sub: 'Plata que te llegó fuera del pago fijo', onClick: () => movementForm(ctx, null, 'ingreso') },
+    { icon: '🔀', label: 'Mover plata', sub: 'De lo libre al mercado, de una meta a lo libre…', onClick: () => transferForm(ctx) },
+    { icon: '📅', label: 'Pago de una vez', sub: 'Algo que toca pagar solo esta quincena', onClick: () => movementForm(ctx, null, 'pago') },
+  ];
+  if ((ctx.s.goals || []).length) items.push({ icon: '🎯', label: 'Aporte a una meta', sub: 'Plata que pasas a tu ahorro', onClick: () => movementForm(ctx, null, 'ahorro') });
+  openMenu({ title: '¿Qué quieres anotar?', items });
 }
 
 // Si estás viendo otra quincena, la fecha por defecto es el inicio de esa quincena.
@@ -622,6 +708,8 @@ export const actions = {
   'pay-edit': (ctx, d) => editItem(ctx, d.key, 'pago'),
 
   'mov-add': (ctx, d) => movementForm(ctx, null, d.kind),
+  'add-menu': ctx => addMenu(ctx),
+  'move-add': (ctx, d) => transferForm(ctx, null, d.to ? { to: d.to } : {}),
   'mov-edit': (ctx, d) => movementForm(ctx, findIn(ctx.s.movements, d.id)),
 
   'budget-open': (ctx, d) => {
@@ -629,9 +717,13 @@ export const actions = {
     openForm({
       title: x.name,
       intro: `Gastado ${fmt(x.spent)} de ${fmt(x.amount)} en esta quincena.`,
-      fields: [{ name: 'amount', label: 'Presupuesto solo para esta quincena', type: 'money', value: x.amount, hint: `Normalmente es ${fmt(x.base)}.` }],
+      fields: [{ name: 'amount', label: 'Presupuesto solo para esta quincena', type: 'money', value: x.own,
+        hint: `Normalmente es ${fmt(x.base)}.${x.moved ? ` Aparte, ${x.moved > 0 ? `le pasaste ${fmt(x.moved)}` : `le sacaste ${fmt(-x.moved)}`}.` : ''}` }],
       submitLabel: 'Guardar monto',
-      extra: [{ label: 'Anotar gasto aquí', kind: 'primary-ghost', onClick: () => movementForm(ctx, null, 'gasto', { budgetId: x.id, concept: x.name }) }],
+      extra: [
+        { label: 'Anotar gasto', kind: 'primary-ghost', onClick: () => movementForm(ctx, null, 'gasto', { budgetId: x.id, concept: x.name }) },
+        { label: 'Pasarle plata', kind: 'primary-ghost', onClick: () => transferForm(ctx, null, { from: 'libre', to: `budget:${x.id}` }) },
+      ],
       onSubmit: v => ctx.commit(s => {
         const rec = ensureRec(s, ctx.ui.q);
         if (v.amount === x.base) delete rec.budgetOverrides[x.id];

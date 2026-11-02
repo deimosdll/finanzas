@@ -189,7 +189,8 @@ export function inicioView(ctx) {
     ${month.entra ? stackBar([
       ['fijos', month.fijos], ['deudas', month.deudas], ['otros', month.otros], ['presupuestos', month.presupuestos + month.sueltos], ['ahorro', month.ahorro],
     ], Math.max(month.entra, sale)) : ''}
-  </section>`;
+  </section>
+  <button class="fab" data-act="add-menu" aria-label="Anotar algo"><span aria-hidden="true">+</span> Anotar</button>`;
 }
 
 function stackBar(parts, total) {

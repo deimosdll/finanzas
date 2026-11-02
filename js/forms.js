@@ -174,6 +174,38 @@ export function openForm({ title, intro, fields, submitLabel = 'Guardar', onSubm
   if (window.matchMedia('(pointer: fine)').matches) form.querySelector('input:not([type=checkbox]), select')?.focus();
 }
 
+/**
+ * Menú de opciones en la hoja inferior, como el de "+" en las apps de Apple.
+ * items: [{ icon, label, sub, onClick }]
+ */
+export function openMenu({ title, items }) {
+  const dlg = sheet();
+  dlg.innerHTML = `
+    <div class="sheet">
+      <header class="sheet-head">
+        <h2>${esc(title)}</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">✕</button>
+      </header>
+      <ul class="menu">${items.map((x, i) => `
+        <li><button type="button" class="menu-item" data-item="${i}">
+          <span class="ico">${x.icon}</span>
+          <span class="menu-text"><b>${esc(x.label)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span>
+          <span class="chev" aria-hidden="true">›</span>
+        </button></li>`).join('')}
+      </ul>
+    </div>`;
+  dlg.querySelector('.sheet').addEventListener('click', e => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if (t.hasAttribute('data-close')) return closeSheet();
+    const x = items[Number(t.dataset.item)];
+    if (!x) return;
+    closeSheet();
+    x.onClick();
+  });
+  dlg.showModal();
+}
+
 export function closeSheet() {
   const dlg = sheet();
   if (dlg.open) dlg.close();

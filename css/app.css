@@ -421,3 +421,41 @@ code.wrap, .code-row code { word-break: break-all; }
 .check.pop { animation: check-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
 @keyframes check-pop { 0% { transform: scale(1); } 40% { transform: scale(0.82); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .check.pop { animation: none; } }
+
+/* ---------- Mover plata y menú "+" ---------- */
+
+.hero-actions { display: flex; gap: 8px; margin-top: 14px; }
+.hero-actions > * {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 9px 4px 8px; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.18);
+  color: #fff; font-weight: 600; font-size: 13px; text-decoration: none;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.hero-actions > * span { font-size: 18px; line-height: 1.1; }
+.hero-actions > *:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.28); }
+
+.fab { display: flex; align-items: center; gap: 6px; transition: transform 0.15s ease; }
+.fab span { font-size: 24px; font-weight: 400; line-height: 1; margin-top: -2px; }
+.fab:active { transform: scale(0.94); }
+
+.menu { list-style: none; margin: 14px 0 4px; padding: 0; background: var(--bg); border-radius: 14px; overflow: hidden; }
+.menu li + li { border-top: 0.5px solid var(--line); }
+.menu-item {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: none; border: 0; text-align: left; color: var(--text); font-size: 16px;
+}
+.menu-item:active { background: color-mix(in srgb, var(--muted) 14%, transparent); }
+.menu-item .ico {
+  flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--card); font-size: 18px;
+}
+.menu-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.menu-text b { font-weight: 600; }
+.menu-text small { color: var(--muted); font-size: 13px; }
+.menu-item .chev { color: var(--muted); font-size: 22px; }
+
+.tag.pocket { background: var(--accent-soft); color: var(--accent); }
+.transfer .flow { font-weight: 500; }
+.transfer .arrow { color: var(--accent); }
+.block { display: block; margin-top: 2px; }
