@@ -3,6 +3,7 @@
 import { fmt, fmtUsd, fmtDate, esc, today, iso, parseMoney, fmtPlain } from './money.js';
 import { qOf, qShift, qTitle, qSubtitle, build, afford, debtStatus, monthlyFixed, ensureRec, toCop, goalStatus } from './quincena.js';
 import { inicioView } from './inicio.js';
+import { nubeSection, atajosSection, nubeActions } from './nube.js';
 import { openForm, toast } from './forms.js';
 import { uid, exportJson, parseImport, emptyState } from './store.js';
 
@@ -328,6 +329,8 @@ function cuentasView(ctx) {
     </ul>
     ${s.settings.usdAuto !== false ? addBtn('usd-refresh', 'Actualizar el dólar ahora') : ''}
     <p class="muted small">El colchón mínimo es lo que siempre quieres que te quede libre. Si un gasto te deja por debajo, la app te dice "queda justo".</p>`)}
+  ${section('☁️ Nube', nubeSection())}
+  ${atajosSection() ? section('⚡ Atajos de Apple', atajosSection()) : ''}
   ${section('💾 Respaldo', `
     <p class="muted small">Tus datos están guardados en este dispositivo. Descarga un respaldo de vez en cuando.</p>
     <div class="btn-row">
@@ -581,6 +584,7 @@ function defaultDate(ctx) {
 const findIn = (arr, id) => arr.find(x => x.id === id);
 
 export const actions = {
+  ...nubeActions,
   'go-q': (ctx, d) => { ctx.ui.q = d.q; if (location.hash !== '#quincena') location.hash = '#quincena'; else ctx.render(); },
   'sav-toggle': (ctx, d) => toggleItem(ctx, d.key, false),
   'sav-edit': (ctx, d) => editItem(ctx, d.key, 'ahorro'),

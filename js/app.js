@@ -2,7 +2,8 @@
 
 import * as store from './store.js';
 import { views, actions, forms, changes, alcanzaResult } from './views.js';
-import { wireSheet } from './forms.js';
+import { wireSheet, toast } from './forms.js';
+import * as sync from './sync.js';
 import { qOf } from './quincena.js';
 import { today, fmtPlain } from './money.js';
 import { fetchUsdCop, isStale } from './rates.js';
@@ -27,31 +28,47 @@ const ctx = {
     mutate(ctx.s);
     ctx.s.updatedAt = Date.now();
     store.save(ctx.s);
+    sync.markDirty();
     ctx.render();
   },
   replace(next) {
     ctx.s = next;
     ctx.s.updatedAt = Date.now();
     store.save(ctx.s);
+    sync.markDirty();
     ctx.render();
   },
+  // Datos que llegan de la nube: se guardan aquí sin volver a marcarlos como pendientes.
+  adopt(next) {
+    ctx.s = next;
+    store.save(ctx.s);
+    softRender();
+  },
   render,
+  softRender,
+  toast,
   refreshRate,
 };
 
 // Trae el precio real del dólar. Devuelve true si lo actualizó.
 async function refreshRate(force = false) {
+  if (!ctx.s) return false; // todavía cargando
   if (!force && !isStale(ctx.s)) return false;
   const v = await fetchUsdCop();
   if (!v) return false;
   ctx.s.settings.usdRate = v;
   ctx.s.settings.usdUpdatedAt = Date.now();
   store.save(ctx.s);
-  // No redibuja mientras escribes o tienes un formulario abierto.
+  sync.markDirty();
+  softRender();
+  return true;
+}
+
+// Redibuja sin interrumpir: si estás escribiendo o con un formulario abierto, espera.
+function softRender() {
   const typing = document.activeElement?.matches?.('input, select, textarea');
   if (!document.getElementById('sheet').open && !typing) render();
   else if (ctx.ui.route === 'alcanza') updateAlcanza();
-  return true;
 }
 
 const main = document.getElementById('main');
@@ -129,9 +146,11 @@ window.addEventListener('hashchange', () => {
 let lastQ = qOf(today());
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') { store.flush(); return; }
+  if (!ctx.s) return;
   const nowQ = qOf(today());
   if (nowQ !== lastQ) { lastQ = nowQ; ctx.ui.q = nowQ; render(); }
   refreshRate();
+  sync.syncNow();
 });
 window.addEventListener('pagehide', () => store.flush());
 
@@ -141,6 +160,8 @@ async function start() {
   ctx.ui.route = routeFromHash();
   render();
   store.askPersistence();
+  sync.onChange(() => { if (ctx.ui.route === 'cuentas') softRender(); });
+  sync.init(ctx);
   refreshRate();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* sin modo offline */ });

@@ -1,5 +1,5 @@
 // Permite abrir la app sin internet. Al cambiar archivos, sube la versión.
-const VERSION = 'finanzas-v8';
+const VERSION = 'finanzas-v10';
 const FILES = [
   './',
   'index.html',
@@ -13,6 +13,8 @@ const FILES = [
   'js/store.js',
   'js/rates.js',
   'js/inicio.js',
+  'js/sync.js',
+  'js/nube.js',
   'icons/icon.svg',
   'icons/apple-touch-icon.png',
   'icons/icon-192.png',
