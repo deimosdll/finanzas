@@ -8,7 +8,7 @@
 // - Los gastos que llegan de los Atajos esperan en "atajos_inbox" hasta que la app los recoge.
 
 import { normalize } from './store.js';
-import { qOf, qTitle, build } from './quincena.js';
+import { qOf, qTitle, qShift, build, ensureRec } from './quincena.js';
 import { today, fmtDate } from './money.js';
 
 export const SUPABASE_URL = 'https://ihmpzymyjlgskebtpmvq.supabase.co';
@@ -133,8 +133,50 @@ export function summaryOf(s) {
     budgets: b.budgets.map(x => ({ id: x.id, name: x.name, left: x.left })),
     next: b.payments.filter(p => !p.done && p.date >= t).sort((a, c) => a.date.localeCompare(c.date)).slice(0, 3)
       .map(p => ({ concept: p.concept, amount: p.amount, fecha: fmtDate(p.date) })),
+    // Para el lector de SMS: lo planeado que aún no está hecho (quincena anterior, actual y siguiente).
+    ...pendingOf(s, b.q),
     at: new Date().toISOString(),
   };
+}
+
+function pendingOf(s, q) {
+  const pending = [];
+  const incoming = [];
+  const done = []; // ya marcado a mano: si llega el SMS, no se anota dos veces
+  for (const qq of [qShift(q, -1), q, qShift(q, 1)]) {
+    const b = build(s, qq);
+    const pick = x => ({ key: x.key, q: qq, concept: x.concept, amount: x.amount, date: x.date });
+    pending.push(...b.payments.filter(p => !p.done).map(pick));
+    incoming.push(...b.incomes.filter(i => !i.done).map(pick));
+    done.push(...[...b.payments, ...b.incomes, ...b.gastos.map(g => ({ ...g, key: `mov:${g.id}` }))].filter(x => x.done !== false).map(pick));
+  }
+  return { pending, incoming, done };
+}
+
+// Lo que llega de la bandeja: gastos/ingresos nuevos, o "marcar como hecho" algo planeado.
+function applyInbox(state, rows) {
+  const notes = [];
+  const have = new Set(state.movements.map(m => m.id));
+  for (const { movement: m } of rows) {
+    if (m.type === 'check' && m.key.startsWith('mov:')) {
+      // Pago o ingreso "de una sola vez": el estado vive en el movimiento mismo.
+      const mov = state.movements.find(x => x.id === m.key.slice(4));
+      if (mov) { mov.done = true; mov.separated = false; if (Math.round(m.amount) !== Math.round(mov.amount)) mov.amount = m.amount; }
+      notes.push('marcado');
+    } else if (m.type === 'check') {
+      const rec = ensureRec(state, m.q);
+      const c = rec.checks[m.key] ?? {};
+      c.done = true;
+      c.separated = false;
+      if (Math.round(m.amount) !== Math.round(m.planned)) c.amount = m.amount;
+      rec.checks[m.key] = c;
+      notes.push('pago marcado');
+    } else if (!have.has(m.id)) {
+      state.movements.push(m);
+      notes.push(m.kind === 'ingreso' ? 'ingreso' : 'gasto');
+    }
+  }
+  return notes;
 }
 
 // Sube. Si `expected` no coincide con la nube (otro dispositivo cambió algo), devuelve null.
@@ -224,8 +266,7 @@ async function doSync(attempt = 0) {
     const inbox = remote ? await fetchInbox() : [];
     if (inbox.length) {
       if (!adopted) state = JSON.parse(JSON.stringify(state));
-      const have = new Set(state.movements.map(m => m.id));
-      for (const row of inbox) if (!have.has(row.movement.id)) state.movements.push(row.movement);
+      applyInbox(state, inbox);
       adopted = true;
     }
 
@@ -250,7 +291,7 @@ async function doSync(attempt = 0) {
     meta.error = null;
     saveMeta();
     notify();
-    if (inbox.length) ctx.toast?.(inbox.length === 1 ? 'Llegó 1 gasto desde Atajos' : `Llegaron ${inbox.length} gastos desde Atajos`);
+    if (inbox.length) ctx.toast?.(inbox.length === 1 ? 'Llegó 1 movimiento del banco o de Atajos' : `Llegaron ${inbox.length} movimientos del banco o de Atajos`);
     return true;
   } catch (e) {
     meta.error = e.message;

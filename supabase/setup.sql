@@ -73,7 +73,7 @@ $$;
 create or replace function public.pendiente_atajos(uid uuid, bid text) returns numeric
 language sql stable set search_path = '' as $$
   select coalesce(sum((movement->>'amount')::numeric), 0) from public.atajos_inbox
-  where user_id = uid and coalesce(movement->>'budgetId', '') = coalesce(bid, '')
+  where user_id = uid and movement->>'kind' = 'gasto' and coalesce(movement->>'budgetId', '') = coalesce(bid, '')
 $$;
 
 create or replace function public.buscar_presupuesto(r_data jsonb, nombre text, out bid text, out bname text)
@@ -201,3 +201,115 @@ grant execute on function public.atajo_alcanza(text, text, text, text) to anon, 
 -- Las ayudas solo las usan las funciones de arriba.
 revoke execute on function public.pendiente_atajos(uuid, text) from public, anon, authenticated;
 revoke execute on function public.buscar_presupuesto(jsonb, text) from public, anon, authenticated;
+
+
+-- ---------- Lector de SMS del banco ----------
+
+create or replace function public.sin_tildes(t text) returns text
+language sql immutable set search_path = '' as $$
+  select upper(translate(coalesce(t, ''), 'áéíóúÁÉÍÓÚñÑüÜ', 'aeiouAEIOUnNuU'))
+$$;
+
+-- Recibe el texto de un SMS (por ejemplo de Bancolombia) y decide qué hacer:
+--  · si coincide con un pago o ingreso planeado (por monto, ±2 %), lo deja marcado como hecho;
+--  · si es entre tus propias cuentas (por número o por tu nombre), no anota nada;
+--  · si no, lo anota como gasto o ingreso.
+-- La app aplica lo que quede en atajos_inbox la próxima vez que sincroniza.
+drop function if exists public.atajo_mensaje(text, text);
+create or replace function public.atajo_mensaje(clave text, texto text) returns "text/plain"
+language plpgsql security definer set search_path = '' as $$
+declare
+  r public.finanzas%rowtype;
+  t text := coalesce(texto, '');
+  tu text := public.sin_tildes(texto);
+  monto numeric; d text; dd int; mm int; yy int; fecha text;
+  entra boolean; sale boolean;
+  cuenta text; nombre text; comercio text; origen text; quien text;
+  propio boolean := false; own_name text; banco_id text; best jsonb; nuevo_id text;
+begin
+  select * into r from public.finanzas where shortcut_key = clave;
+  if not found then return 'No reconozco esa clave.'; end if;
+
+  monto := public.parse_monto(substring(t from '\$\s?([0-9][0-9.,]*)'));
+  if monto is null or monto <= 0 then return 'No encontré un monto en el mensaje. No anoté nada.'; end if;
+
+  d := substring(t from 'el ([0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4})');
+  if d is not null then
+    dd := split_part(d, '/', 1)::int; mm := split_part(d, '/', 2)::int; yy := split_part(d, '/', 3)::int;
+    if yy < 100 then yy := yy + 2000; end if;
+    fecha := to_char(make_date(yy, mm, dd), 'YYYY-MM-DD');
+  else
+    fecha := to_char(now() at time zone 'America/Bogota', 'YYYY-MM-DD');
+  end if;
+
+  entra := tu ~ '(RECIBISTE|TE CONSIGNARON|TE TRANSFIRIERON|TE ENVIARON|ABONO|RECIBIMOS)';
+  sale := not entra and tu ~ '(TRANSFERISTE|COMPRASTE|PAGASTE|RETIRASTE|COMPRA |PAGO DE |RETIRO)';
+  if not entra and not sale then return 'Este mensaje no parece un movimiento de plata. No anoté nada.'; end if;
+
+  cuenta := substring(t from 'a la cuenta \*?([0-9]+)');
+  nombre := substring(t from ' a ([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ .]*[A-ZÁÉÍÓÚÑ]) el [0-9]');
+  comercio := substring(t from ' en ([A-Z0-9][A-Z0-9ÁÉÍÓÚÑ .*&-]*[A-Z0-9])');
+  origen := trim(substring(t from 'de (.+?) (?:por|en tu|a tu)'));
+
+  -- ¿Entre tus propias cuentas?
+  own_name := public.sin_tildes(r.data->'settings'->>'ownName');
+  if cuenta is not null then
+    select true into propio from jsonb_array_elements(coalesce(r.data->'accounts', '[]'::jsonb)) a
+    where length(regexp_replace(coalesce(a->>'ref', ''), '[^0-9]', '', 'g')) >= 4
+      and right(regexp_replace(a->>'ref', '[^0-9]', '', 'g'), 4) = right(cuenta, 4)
+    limit 1;
+  end if;
+  quien := public.sin_tildes(coalesce(case when sale then nombre else origen end, ''));
+  if own_name <> '' and quien <> '' and (position(own_name in quien) > 0 or position(quien in own_name) > 0) then
+    propio := true;
+  end if;
+  if coalesce(propio, false) then
+    return 'Movimiento entre tus cuentas por ' || public.fmt_cop(monto) || '. No es gasto, no lo anoté.';
+  end if;
+
+  select a->>'id' into banco_id from jsonb_array_elements(coalesce(r.data->'accounts', '[]'::jsonb)) a
+  where public.sin_tildes(a->>'name') like '%' || public.sin_tildes(coalesce(nullif(split_part(t, ':', 1), ''), 'X')) || '%'
+  limit 1;
+  nuevo_id := 'sm' || substr(md5(random()::text || clock_timestamp()::text), 1, 10);
+
+  -- ¿Coincide con algo planeado?
+  select p into best
+  from jsonb_array_elements(coalesce(r.summary->(case when sale then 'pending' else 'incoming' end), '[]'::jsonb)) p
+  where abs((p->>'amount')::numeric - monto) <= greatest(monto * 0.02, 100)
+    and abs((p->>'date')::date - fecha::date) <= 10
+    and not exists (select 1 from public.atajos_inbox i where i.user_id = r.user_id and i.movement->>'key' = p->>'key')
+  order by abs((p->>'date')::date - fecha::date)
+  limit 1;
+
+  if best is not null then
+    insert into public.atajos_inbox (user_id, movement) values (r.user_id, jsonb_build_object(
+      'id', nuevo_id, 'type', 'check', 'key', best->>'key', 'q', best->>'q',
+      'amount', monto, 'planned', (best->>'amount')::numeric, 'via', 'sms'));
+    return (best->>'concept') || case when sale then ' marcado como pagado (' else ' marcado como recibido (' end || public.fmt_cop(monto) || ').';
+  end if;
+
+  -- ¿Ya estaba registrado a mano (mismo monto, fecha cercana)?
+  select p into best from jsonb_array_elements(coalesce(r.summary->'done', '[]'::jsonb)) p
+  where abs((p->>'amount')::numeric - monto) <= greatest(monto * 0.02, 100)
+    and abs((p->>'date')::date - fecha::date) <= 5
+  limit 1;
+  if best is not null then
+    return 'Ya estaba registrado: ' || (best->>'concept') || ' (' || public.fmt_cop(monto) || '). No lo anoté otra vez.';
+  end if;
+
+  if sale then
+    insert into public.atajos_inbox (user_id, movement) values (r.user_id, jsonb_build_object(
+      'id', nuevo_id, 'kind', 'gasto', 'date', fecha,
+      'concept', coalesce(initcap(nombre), comercio, case when cuenta is not null then 'Transferencia a cuenta *' || right(cuenta, 4) end, 'Gasto del banco'),
+      'amount', monto, 'currency', 'COP', 'original', null, 'budgetId', null, 'accountId', banco_id, 'done', true, 'via', 'sms'));
+    return 'Gasto anotado: ' || coalesce(initcap(nombre), comercio, 'transferencia') || ' por ' || public.fmt_cop(monto) || '.';
+  end if;
+
+  insert into public.atajos_inbox (user_id, movement) values (r.user_id, jsonb_build_object(
+    'id', nuevo_id, 'kind', 'ingreso', 'date', fecha, 'concept', coalesce(initcap(origen), 'Ingreso del banco'),
+    'amount', monto, 'currency', 'COP', 'original', null, 'accountId', banco_id, 'done', true, 'via', 'sms'));
+  return 'Ingreso anotado: ' || coalesce(initcap(origen), 'ingreso') || ' por ' || public.fmt_cop(monto) || '.';
+end $$;
+
+revoke execute on function public.atajo_mensaje(text, text) from public;
+grant execute on function public.atajo_mensaje(text, text) to anon, authenticated;

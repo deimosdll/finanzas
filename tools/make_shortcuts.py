@@ -56,9 +56,9 @@ def workflow(actions, color, accepts_input=False):
         'WFWorkflowMinimumClientVersionString': '900',
         'WFWorkflowIcon': {'WFWorkflowIconStartColor': color, 'WFWorkflowIconGlyphNumber': 59511},
         'WFWorkflowImportQuestions': [],
-        'WFWorkflowInputContentItemClasses': ['WFStringContentItem'] if accepts_input else [],
+        'WFWorkflowInputContentItemClasses': ['WFStringContentItem', 'WFRichTextContentItem', 'WFGenericFileContentItem'] if accepts_input else [],
         'WFWorkflowOutputContentItemClasses': [],
-        'WFWorkflowTypes': ['Watch'],
+        'WFWorkflowTypes': ['Watch'] if not accepts_input else [],
         'WFWorkflowHasShortcutInputVariables': accepts_input,
     }
 
@@ -81,6 +81,12 @@ u5, a5 = ask('¿Cuánto cuesta?', 'Number')
 ub2, chooser2 = choose_budget('¿De qué es?')
 u6, a6 = call('atajo_alcanza', [('monto', var(u5, 'Provided Input')), ('presupuesto', var(ub2, 'Chosen Item'))])
 shortcuts['Me alcanza'] = workflow([a5, *chooser2, a6, show(u6)], PURPLE)
+
+# 4. Registrar SMS: lo llama la automatización de Mensajes con el SMS del banco como entrada.
+u7, a7 = call('atajo_mensaje', [('texto', ext_input())])
+notify = act('is.workflow.actions.notification', WFNotificationActionTitle='Finanzas',
+             WFNotificationActionBody=var(u7, 'Contents of URL'))
+shortcuts['Registrar SMS'] = workflow([a7, notify], GREEN, accepts_input=True)
 
 for name, wf in shortcuts.items():
     path = os.path.join(out_dir, f'{name} (sin firmar).shortcut')

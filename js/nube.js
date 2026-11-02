@@ -71,6 +71,14 @@ export function atajosSection() {
       ${step(3, 'Acción <b>Mostrar notificación</b> con el <b>Contenido de la URL</b>.')}
     </ol><p class="muted small">Queda como gasto sin presupuesto. Si era de Mercado o Salidas, tócalo en la quincena y cámbialo.</p></details>
 
+    <details class="recipe"><summary>🏦 Registrar solo los SMS del banco</summary><ol class="steps">
+      ${step(1, 'Primero necesitas el atajo <b>Registrar SMS</b> (pídeselo a Claude si no lo tienes).')}
+      ${step(2, 'En Atajos ve a <b>Automatización</b> → <b>+</b> → <b>Mensaje</b>.')}
+      ${step(3, 'En <b>Remitente</b> elige el número del banco (Bancolombia: <b>85540</b>). Marca <b>Ejecutar inmediatamente</b> y toca <b>Siguiente</b>.')}
+      ${step(4, 'Elige <b>Ejecutar atajo</b> → <b>Registrar SMS</b>. Toca la flecha de esa acción y en <b>Entrada</b> elige <b>Mensaje</b> (o <b>Entrada del atajo</b>).')}
+      ${step(5, 'Listo. Cada SMS del banco marca pagos e ingresos planeados, ignora lo que pasas entre tus cuentas y anota lo demás. Te llega una notificación con lo que hizo.')}
+    </ol><p class="muted small">Para que reconozca tus cuentas, pon el número de cada una (Cuentas → la cuenta) y tu nombre como sale en el banco (Ajustes).</p></details>
+
     <details class="recipe"><summary>💬 "Oye Siri, ¿cuánto tengo libre?"</summary><ol class="steps">
       ${step(1, 'Nombre del atajo: <b>Cuánto tengo libre</b>.')}
       ${common('atajo_resumen')}

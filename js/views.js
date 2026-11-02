@@ -370,6 +370,7 @@ function accountForm(ctx, a) {
       { name: 'balance', label: 'Saldo hoy (en tarjeta: lo que debes)', type: 'money', value: a.balance },
       { name: 'fee', label: 'Cuota de manejo al mes', type: 'money', value: a.fee, hint: 'Déjala en 0 si no te cobran.' },
       { name: 'feeDay', label: 'Día en que la cobran', type: 'number', value: a.feeDay, min: 1, max: 31, placeholder: 'Opcional' },
+      { name: 'ref', label: 'Número de cuenta o celular (opcional)', value: a.ref, placeholder: '3001234567', hint: 'Sirve para que los SMS del banco reconozcan cuándo pasas plata a esta cuenta y no lo cuenten como gasto.' },
     ],
     onSubmit: v => ctx.commit(s => {
       if (isNew) s.accounts.push({ id: uid(), ...v });
@@ -672,11 +673,15 @@ export const actions = {
       { name: 'usdAuto', label: 'Dólar con el cambio real', type: 'checkbox', value: ctx.s.settings.usdAuto !== false, hint: 'Se actualiza solo cada vez que abres la app. Si escribes un precio a mano, queda fijo.' },
       { name: 'usdRate', label: 'Precio del dólar (COP)', type: 'money', value: ctx.s.settings.usdRate },
       { name: 'minimo', label: 'Colchón mínimo por quincena', type: 'money', value: ctx.s.settings.minimo },
+      { name: 'name', label: 'Cómo te saluda la app', value: ctx.s.settings.name, placeholder: 'Tu nombre' },
+      { name: 'ownName', label: 'Tu nombre completo como sale en el banco', value: ctx.s.settings.ownName, hint: 'Así los SMS reconocen cuando te pasas plata a ti mismo.' },
     ],
     onSubmit: v => {
       const typedRate = v.usdRate !== ctx.s.settings.usdRate;
       ctx.commit(s => {
         s.settings.minimo = v.minimo;
+        s.settings.name = v.name;
+        s.settings.ownName = v.ownName;
         s.settings.usdRate = v.usdRate || s.settings.usdRate;
         s.settings.usdAuto = typedRate ? false : v.usdAuto;
         if (s.settings.usdAuto) s.settings.usdUpdatedAt = null; // fuerza a traer el precio ya
