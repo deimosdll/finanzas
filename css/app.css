@@ -398,3 +398,14 @@ code { font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var
 code.wrap, .code-row code { word-break: break-all; }
 .code-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .code-row code { flex: 1; min-width: 0; padding: 6px 8px; }
+
+/* Contraseña con ojito */
+.field label > span { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.pass-wrap { position: relative; }
+.pass-wrap input { padding-right: 48px !important; }
+.eye {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; padding: 0;
+}
+.eye svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.eye[aria-pressed="true"] { color: var(--accent); }

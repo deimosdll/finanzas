@@ -7,6 +7,9 @@ const sheet = () => document.getElementById('sheet');
 // Campos soportados:
 //  { name, label, type: 'text'|'money'|'number'|'date'|'select'|'checkbox'|'textarea'|'payments'|'note',
 //    value, options: [{value,label}], placeholder, hint, required, currencyField }
+const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
 function fieldHtml(f) {
   const id = `f-${f.name}`;
   const hint = f.hint ? `<small class="hint">${esc(f.hint)}</small>` : '';
@@ -36,6 +39,12 @@ function fieldHtml(f) {
         <div class="pay-rows" data-payments="${f.name}">${rows.map(payRow).join('')}</div>
         <button type="button" class="link" data-add-payrow>+ Agregar pago</button>${hint}</div>`;
     }
+    case 'password':
+      return `<div class="field"><label for="${id}"><span>${esc(f.label)}</span></label>
+        <div class="pass-wrap">
+          <input id="${id}" name="${f.name}" type="password" autocomplete="${f.autocomplete || 'current-password'}" ${req}>
+          <button type="button" class="eye" data-toggle-pass aria-label="Mostrar contraseña" aria-pressed="false">${EYE}</button>
+        </div>${hint}</div>`;
     default:
       return `<label class="field"><span>${esc(f.label)}</span>
         <input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${esc(f.value ?? '')}"
@@ -115,6 +124,14 @@ export function openForm({ title, intro, fields, submitLabel = 'Guardar', onSubm
       if (confirm('¿Seguro que quieres eliminar esto?')) { closeSheet(); onDelete(); }
     } else if (t.hasAttribute('data-add-payrow')) {
       t.previousElementSibling.insertAdjacentHTML('beforeend', payRow({ date: '', amount: '' }));
+    } else if (t.hasAttribute('data-toggle-pass')) {
+      const input = t.previousElementSibling;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      t.innerHTML = show ? EYE_OFF : EYE;
+      t.setAttribute('aria-pressed', String(show));
+      t.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      input.focus();
     } else if (t.hasAttribute('data-del-payrow')) {
       t.closest('.pay-row').remove();
     } else if (t.dataset.extra != null) {

@@ -99,7 +99,7 @@ function authForm(ctx, mode) {
       : 'Entra con el correo y la contraseña de tu cuenta de Finanzas.',
     fields: [
       { name: 'email', label: 'Correo', type: 'email', placeholder: 'tu@correo.com', required: true },
-      { name: 'password', label: 'Contraseña', type: 'password', required: true, hint: isNew ? 'Mínimo 6 caracteres. Guárdala en Contraseñas de Apple.' : '' },
+      { name: 'password', label: 'Contraseña', type: 'password', autocomplete: isNew ? 'new-password' : 'current-password', required: true, hint: isNew ? 'Mínimo 6 caracteres. Guárdala en Contraseñas de Apple.' : '' },
     ],
     submitLabel: isNew ? 'Crear cuenta' : 'Entrar',
     onSubmit: async v => {
