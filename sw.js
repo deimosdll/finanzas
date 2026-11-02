@@ -1,5 +1,5 @@
 // Permite abrir la app sin internet. Al cambiar archivos, sube la versión.
-const VERSION = 'finanzas-v17';
+const VERSION = 'finanzas-v18';
 const FILES = [
   './',
   'index.html',

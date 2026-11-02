@@ -30,15 +30,21 @@ function lineText(it) {
   return `<b>${fmtDate(it.date)}</b> – ${esc(it.concept)}${it.account ? ` (${esc(it.account)})` : ''}: ${fmt(it.amount)}${usd}${changed}`;
 }
 
+// Pendientes arriba en orden de fecha; lo hecho abajo, bajo "Hecho", también por fecha.
+const byDate = (a, b) => a.date.localeCompare(b.date) || a.concept.localeCompare(b.concept);
+const doneHead = n => `<li class="done-head" aria-hidden="true">Hecho · ${n}</li>`;
+
 function checklist(items, act, emptyText) {
   if (!items.length) return `<p class="empty">${emptyText}</p>`;
-  const sorted = [...items].sort((a, b) => (a.done - b.done) || a.date.localeCompare(b.date) || a.concept.localeCompare(b.concept));
-  return `<ul class="checklist">${sorted.map(it => `
-    <li class="${it.done ? 'done' : ''}">
+  const open = items.filter(i => !i.done).sort(byDate);
+  const done = items.filter(i => i.done).sort(byDate);
+  const li = it => `
+    <li class="${it.done ? 'done' : ''}" data-flip="${esc(it.key)}">
       <button class="check" data-act="${act}-toggle" data-key="${esc(it.key)}" role="checkbox" aria-checked="${it.done ? 'true' : it.separated ? 'mixed' : 'false'}"
         aria-label="${esc(it.concept)}: ${it.done ? (act === 'inc' ? 'llegó' : 'pagado') : it.separated ? 'plata separada' : 'pendiente'}"></button>
       <button class="line" data-act="${act}-edit" data-key="${esc(it.key)}">${lineText(it)}${it.separated ? ' <span class="tag sep">separado</span>' : ''}</button>
-    </li>`).join('')}</ul>`;
+    </li>`;
+  return `<ul class="checklist">${open.map(li).join('')}${done.length ? doneHead(done.length) + done.map(li).join('') : ''}</ul>`;
 }
 
 // "💵 Ingresos" -> ícono en su recuadro + título
@@ -90,11 +96,14 @@ function quincenaView(ctx) {
       <span class="tag">${bud ? esc(bud.name) : 'Sin presupuesto'}</span></button></li>`;
   }).join('')}</ul>` : `<p class="empty">Nada anotado todavía.</p>`;
 
-  const tasks = b.tasks.length ? `<ul class="checklist">${[...b.tasks].sort((a, c) => a.done - c.done).map(x => `
-    <li class="${x.done ? 'done' : ''}">
+  const taskLi = x => `
+    <li class="${x.done ? 'done' : ''}" data-flip="task:${x.id}">
       <button class="check" data-act="task-toggle" data-id="${x.id}" role="checkbox" aria-checked="${!!x.done}" aria-label="Marcar pendiente"></button>
       <button class="line" data-act="task-edit" data-id="${x.id}">${esc(x.text)}</button>
-    </li>`).join('')}</ul>` : '';
+    </li>`;
+  const doneTasks = b.tasks.filter(x => x.done);
+  const tasks = b.tasks.length ? `<ul class="checklist">${b.tasks.filter(x => !x.done).map(taskLi).join('')}${
+    doneTasks.length ? doneHead(doneTasks.length) + doneTasks.map(taskLi).join('') : ''}</ul>` : '';
 
   const reserves = b.reserves.length ? `<ul class="plain sub-list">${b.reserves.map(x => `
     <li><button class="line" data-act="reserve-edit" data-id="${x.id}">${esc(x.concept)}: ${fmt(x.amount)}${x.all ? ' <span class="muted">(todo lo que sobra)</span>' : ''}</button></li>`).join('')}</ul>` : '';
@@ -587,7 +596,7 @@ const findIn = (arr, id) => arr.find(x => x.id === id);
 export const actions = {
   ...nubeActions,
   'go-q': (ctx, d) => { ctx.ui.q = d.q; if (location.hash !== '#quincena') location.hash = '#quincena'; else ctx.render(); },
-  'sav-toggle': (ctx, d) => toggleItem(ctx, d.key, false),
+  'sav-toggle': (ctx, d, el) => animateToggle(el, false, () => toggleItem(ctx, d.key, false)),
   'sav-edit': (ctx, d) => editItem(ctx, d.key, 'ahorro'),
   'goal-add': ctx => goalForm(ctx),
   'goal-edit': (ctx, d) => goalForm(ctx, findIn(ctx.s.goals, d.id)),
@@ -607,8 +616,8 @@ export const actions = {
   },
 
   // Ingresos y pagos con checkbox
-  'inc-toggle': (ctx, d) => toggleItem(ctx, d.key, false),
-  'pay-toggle': (ctx, d) => toggleItem(ctx, d.key, true),
+  'inc-toggle': (ctx, d, el) => animateToggle(el, false, () => toggleItem(ctx, d.key, false)),
+  'pay-toggle': (ctx, d, el) => animateToggle(el, true, () => toggleItem(ctx, d.key, true)),
   'inc-edit': (ctx, d) => editItem(ctx, d.key, 'ingreso'),
   'pay-edit': (ctx, d) => editItem(ctx, d.key, 'pago'),
 
@@ -631,7 +640,7 @@ export const actions = {
     });
   },
 
-  'task-toggle': (ctx, d) => ctx.commit(s => { const t = findIn(ensureRec(s, ctx.ui.q).tasks, d.id); t.done = !t.done; }),
+  'task-toggle': (ctx, d, el) => animateToggle(el, false, () => ctx.commit(s => { const t = findIn(ensureRec(s, ctx.ui.q).tasks, d.id); t.done = !t.done; })),
   'task-edit': (ctx, d) => {
     const t = findIn(ctx.cur.tasks, d.id);
     openForm({
@@ -742,6 +751,22 @@ export const changes = {
     }
   },
 };
+
+// Como en Recordatorios de Apple: el check se llena al instante, la línea espera un momento
+// y después baja (o sube) a su lugar. Si no cambia de grupo (vacío → separado), se aplica ya.
+function animateToggle(el, withSeparated, apply) {
+  if (el.dataset.busy) return;
+  const cur = el.getAttribute('aria-checked');
+  const next = withSeparated ? (cur === 'false' ? 'mixed' : cur === 'mixed' ? 'true' : 'false') : (cur === 'true' ? 'false' : 'true');
+  el.setAttribute('aria-checked', next);
+  el.classList.add('pop');
+  const moves = cur === 'true' || next === 'true';
+  if (!moves) return apply();
+  el.dataset.busy = '1';
+  el.closest('li')?.classList.toggle('done', next === 'true');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(apply, reduce ? 0 : 550);
+}
 
 // Ingresos: vacío ↔ llegó. Pagos: vacío → plata separada → pagado → vacío.
 function nextState(x, withSeparated) {

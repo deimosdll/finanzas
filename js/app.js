@@ -91,10 +91,27 @@ function renderTabs() {
 function render() {
   const scroll = window.scrollY;
   const sameRoute = main.dataset.route === ctx.ui.route;
+  // Guarda dónde estaba cada línea para animar su paso a la nueva posición.
+  const before = new Map();
+  if (sameRoute) main.querySelectorAll('[data-flip]').forEach(el => before.set(el.dataset.flip, el.getBoundingClientRect().top));
   renderTabs();
   main.innerHTML = views[ctx.ui.route](ctx);
   main.dataset.route = ctx.ui.route;
   window.scrollTo(0, sameRoute ? scroll : 0);
+  if (before.size && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) flip(before);
+}
+
+// Desliza cada línea desde donde estaba hasta donde quedó (técnica FLIP).
+function flip(before) {
+  main.querySelectorAll('[data-flip]').forEach(el => {
+    const top = before.get(el.dataset.flip);
+    if (top == null) return;
+    const dy = top - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 1) return;
+    el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }],
+      { duration: 420, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+  });
+  main.querySelectorAll('.done-head').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 }));
 }
 
 // Toques en cualquier botón con data-act
