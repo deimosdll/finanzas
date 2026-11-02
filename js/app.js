@@ -181,7 +181,19 @@ async function start() {
   sync.init(ctx);
   refreshRate();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* sin modo offline */ });
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // En el iPhone la app se queda dormida con el código viejo en memoria.
+      // Al volver a abrirla busca versión nueva y, si la hay, recarga sola.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => { /* sin modo offline */ });
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', async () => {
+      if (!hadController) { hadController = true; return; }
+      await store.flush();
+      location.reload();
+    });
   }
 }
 

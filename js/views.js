@@ -7,6 +7,9 @@ import { nubeSection, atajosSection, nubeActions } from './nube.js';
 import { openForm, openMenu, toast } from './forms.js';
 import { uid, exportJson, parseImport, emptyState } from './store.js';
 
+// Igual al número de VERSION en sw.js: así se ve en Cuentas qué versión tiene cada dispositivo.
+const APP_VERSION = 20;
+
 // ---------- Piezas comunes ----------
 
 const ACCOUNT_TYPES = [
@@ -362,7 +365,7 @@ function cuentasView(ctx) {
       <label class="btn">Cargar respaldo<input type="file" accept="application/json,.json" data-act-change="import" hidden></label>
     </div>
     <button class="btn danger-ghost wide" data-act="wipe">Borrar todos los datos</button>`)}
-  <p class="muted small center">Esto es una herramienta para organizarte, no asesoría financiera.</p>`;
+  <p class="muted small center">Versión ${APP_VERSION} · Esto es una herramienta para organizarte, no asesoría financiera.</p>`;
 }
 
 // "cambio real, actualizado hoy 7:02 pm" o "fijo, lo pusiste tú"
