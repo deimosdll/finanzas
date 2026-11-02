@@ -263,9 +263,12 @@ async function doSync(attempt = 0) {
 // Primer inicio de sesión en un dispositivo: decide qué datos quedan.
 export async function firstSync(localHasData, askUseCloud) {
   const remote = await fetchRemote();
+  const d = remote?.data || {};
+  const remoteHasData = !!(d.accounts?.length || d.incomes?.length || d.fixed?.length || d.debts?.length || d.movements?.length);
   if (!remote) {
     meta.dirty = true; // la nube está vacía: se suben los de este dispositivo
-  } else if (localHasData && !askUseCloud()) {
+  } else if (localHasData && (!remoteHasData || !askUseCloud())) {
+    // La nube no tiene nada útil (o él eligió este dispositivo): se reemplaza con lo de aquí.
     const row = await push(ctxRef.s, null, true); // reemplazar la nube con este dispositivo
     meta.syncedAt = row?.updated_at || null;
     meta.dirty = false;
