@@ -102,27 +102,22 @@ function authForm(ctx, mode) {
       { name: 'password', label: 'Contraseña', type: 'password', required: true, hint: isNew ? 'Mínimo 6 caracteres. Guárdala en Contraseñas de Apple.' : '' },
     ],
     submitLabel: isNew ? 'Crear cuenta' : 'Entrar',
-    onSubmit: v => {
-      (async () => {
-        try {
-          if (isNew) {
-            const r = await sync.signUp(v.email, v.password);
-            if (!r.session) {
-              alert('Listo. Abre el correo que te llegó y confirma tu cuenta. Después vuelve aquí y toca "Entrar".');
-              return;
-            }
-          } else {
-            await sync.signIn(v.email, v.password);
-          }
-          toast('Conectado. Sincronizando…');
-          await sync.firstSync(hasData(ctx.s), () => confirm(
-            'Ya tienes datos en la nube y también en este dispositivo.\n\nAceptar: usar los de la nube (recomendado si ya los tenías en otro dispositivo).\nCancelar: reemplazar la nube con los de este dispositivo.'));
-          ctx.render();
-          toast(sync.meta.error ? sync.meta.error : 'Sincronizado');
-        } catch (e) {
-          alert(e.message);
+    onSubmit: async v => {
+      try {
+        if (isNew) {
+          const r = await sync.signUp(v.email, v.password);
+          if (!r.session) return 'Listo. Abre el correo que te llegó y confirma tu cuenta. Después toca "Entrar" (no "Crear cuenta").';
+        } else {
+          await sync.signIn(v.email, v.password);
         }
-      })();
+      } catch (e) {
+        return e.message;
+      }
+      toast('Conectado. Sincronizando…');
+      await sync.firstSync(hasData(ctx.s), () => confirm(
+        'Ya tienes datos en la nube y también en este dispositivo.\n\nAceptar: usar los de la nube (recomendado si ya los tenías en otro dispositivo).\nCancelar: reemplazar la nube con los de este dispositivo.'));
+      ctx.render();
+      toast(sync.meta.error ? sync.meta.error : 'Sincronizado');
     },
   });
 }

@@ -133,8 +133,22 @@ export function openForm({ title, intro, fields, submitLabel = 'Guardar', onSubm
         return;
       }
     }
-    const err = onSubmit(values);
-    if (typeof err === 'string') { form.querySelector('.form-error').textContent = err; return; }
+    const errBox = form.querySelector('.form-error');
+    const res = onSubmit(values);
+    // onSubmit puede ser asíncrono (por ejemplo, entrar a la nube): espera sin cerrar la hoja.
+    if (res && typeof res.then === 'function') {
+      const btn = form.querySelector('[type=submit]');
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Un momento…';
+      errBox.textContent = '';
+      res.then(err => {
+        if (typeof err === 'string') { errBox.textContent = err; btn.disabled = false; btn.textContent = label; }
+        else closeSheet();
+      });
+      return;
+    }
+    if (typeof res === 'string') { errBox.textContent = res; return; }
     closeSheet();
   });
 
