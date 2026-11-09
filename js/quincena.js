@@ -4,6 +4,7 @@
 // Su id es 'YYYY-MM-1' o 'YYYY-MM-2'.
 //
 // Sobra = arranque + ingresos − pagos − presupuestos − gastos sin presupuesto
+// (en la quincena actual y las pasadas, solo los ingresos marcados como recibidos)
 // Libre = Sobra − lo apartado (plata que ya tiene destino)
 
 import { pad, daysInMonth, today, MESES, MESES_LARGO } from './money.js';
@@ -238,6 +239,10 @@ export function build(s, q, depth = 0) {
     currency: m.currency, original: m.original,
   });
   const movs = s.movements.filter(m => m.date >= r.start && m.date <= r.end);
+  // Quincena que ya empezó (la actual o una pasada): solo cuenta la plata que marcaste como recibida.
+  // Las futuras se proyectan con todo lo planeado.
+  const live = r.start <= today();
+  const incomeCounts = m => !live || !!m.done;
 
   // Bolsillos: plata que entra directo a un presupuesto o meta, o que pasas de uno a otro.
   const moved = { budget: {}, goal: {} };
@@ -247,7 +252,7 @@ export function build(s, q, depth = 0) {
     if (moved[type]) moved[type][id] = (moved[type][id] || 0) + v;
   };
   for (const m of movs) {
-    if (m.kind === 'ingreso') addPocket(m.pocket, m.amount);
+    if (m.kind === 'ingreso' && incomeCounts(m)) addPocket(m.pocket, m.amount);
     if (m.kind === 'mover') { addPocket(m.from, -m.amount); addPocket(m.to, m.amount); }
   }
   const transfers = movs.filter(m => m.kind === 'mover').map(m => ({
@@ -335,7 +340,8 @@ export function build(s, q, depth = 0) {
   const start = startOf(s, q, depth);
 
   const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
-  const ingresos = sum(incomes, x => x.amount);
+  const ingresosPlan = sum(incomes, x => x.amount);
+  const ingresos = sum(incomes.filter(incomeCounts), x => x.amount);
   const pagos = sum(payments, x => x.amount);
   const presupuestos = sum(budgets, b => Math.max(b.amount, b.spent));
   const sueltos = sum(loose, g => g.amount);
@@ -345,14 +351,20 @@ export function build(s, q, depth = 0) {
 
   // Apartados: montos fijos, o "todo lo que sobre" (se ajusta solo si algo cambia, como el dólar).
   const raw = rec.reserves || [];
-  let left = sobrante - sum(raw.filter(x => !x.all), x => Number(x.amount) || 0);
-  const reserves = raw.map(x => {
-    if (!x.all) return x;
-    const amount = Math.max(0, left);
-    left -= amount;
-    return { ...x, amount };
-  });
+  const reservesFor = sob => {
+    let left = sob - sum(raw.filter(x => !x.all), x => Number(x.amount) || 0);
+    return raw.map(x => {
+      if (!x.all) return x;
+      const amount = Math.max(0, left);
+      left -= amount;
+      return { ...x, amount };
+    });
+  };
+  const reserves = reservesFor(sobrante);
   const apartado = sum(reserves, x => Number(x.amount) || 0);
+  // Cómo quedaría lo libre cuando llegue lo que falta.
+  const sobraSiLlega = sobrante + (ingresosPlan - ingresos);
+  const libreSiLlega = sobraSiLlega - sum(reservesFor(sobraSiLlega), x => Number(x.amount) || 0);
 
   return {
     q, range: r, rec, start,
@@ -364,6 +376,9 @@ export function build(s, q, depth = 0) {
       porPagar: sum(payments.filter(p => !p.done), p => p.amount),
       separado: sum(payments.filter(p => p.separated), p => p.amount),
       porRecibir: sum(incomes.filter(i => !i.done), i => i.amount),
+      // Lo que no ha llegado y todavía no cuenta (solo pasa en la quincena actual o pasadas).
+      sinLlegar: ingresosPlan - ingresos,
+      ingresosPlan, live, libreSiLlega,
     },
   };
 }

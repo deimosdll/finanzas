@@ -8,7 +8,7 @@ import { openForm, openMenu, toast } from './forms.js';
 import { uid, exportJson, parseImport, emptyState } from './store.js';
 
 // Igual al número de VERSION en sw.js: así se ve en Cuentas qué versión tiene cada dispositivo.
-const APP_VERSION = 21;
+const APP_VERSION = 22;
 
 // ---------- Piezas comunes ----------
 
@@ -140,9 +140,11 @@ function quincenaView(ctx) {
   <section class="hero ${t.libre < 0 ? 'neg' : ''}">
     <p class="label">Libre para gastar</p>
     <p class="big">${fmt(t.libre)}</p>
-    <p class="sub">${t.libre < 0
-      ? 'No te alcanza para todo lo de esta quincena. Revisa presupuestos o pagos.'
-      : 'Ya descontados los pagos, los presupuestos y lo apartado.'}</p>
+    <p class="sub">${t.sinLlegar > 0
+      ? `Solo cuenta la plata que ya marcaste. Faltan por llegar <b>${fmt(t.sinLlegar)}</b>: cuando los marques quedas en <b>${fmt(t.libreSiLlega)}</b>.`
+      : t.libre < 0
+        ? 'No te alcanza para todo lo de esta quincena. Revisa presupuestos o pagos.'
+        : 'Ya descontados los pagos, los presupuestos y lo apartado.'}</p>
     <div class="hero-actions">
       <button data-act="mov-add" data-kind="gasto"><span>＋</span>Gasto</button>
       <button data-act="move-add"><span>⇄</span>Mover plata</button>
@@ -176,7 +178,8 @@ function quincenaView(ctx) {
   ${section('🏦 Mi plata', `
     <div class="ledger">
       ${row('Arrancas con', `<button class="link" data-act="q-start">${fmt(t.inicio)}</button>`)}
-      ${row('+ Entra', fmt(t.ingresos))}
+      ${row(t.sinLlegar > 0 ? '+ Ya entró' : '+ Entra', fmt(t.ingresos))}
+      ${t.sinLlegar > 0 ? row('<span class="muted">Falta por llegar (no cuenta aún)</span>', `<span class="muted">${fmt(t.sinLlegar)}</span>`) : ''}
       ${row('− Pagos', fmt(t.pagos))}
       ${row('− Presupuestos', fmt(t.presupuestos))}
       ${t.ahorro ? row('− Ahorro a metas', fmt(t.ahorro)) : ''}
@@ -187,7 +190,7 @@ function quincenaView(ctx) {
       ${row('Libre', `<b>${fmt(t.libre)}</b>`, 'total' + (t.libre < 0 ? ' neg' : ''))}
     </div>
     ${addBtn('reserve-add', '+ Apartar plata (ya tiene destino)')}
-    ${t.porPagar || t.porRecibir ? `<p class="muted small">Falta por pagar ${fmt(t.porPagar)}${t.separado ? ` (ya separaste ${fmt(t.separado)})` : ''} · falta por recibir ${fmt(t.porRecibir)}</p>` : ''}
+    ${t.porPagar ? `<p class="muted small">Falta por pagar ${fmt(t.porPagar)}${t.separado ? ` (ya separaste ${fmt(t.separado)})` : ''}</p>` : ''}
     ${accounts}`)}
 
   <button class="btn ghost wide" data-act="q-review">Marcar revisión de hoy</button>

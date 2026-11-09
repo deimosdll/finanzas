@@ -41,6 +41,10 @@ export function alerts(s) {
     ? `<b>${esc(ready[0].concept)}</b> se cobra ${inDays(daysBetween(t, ready[0].date))}. La plata ya está separada.`
     : `${ready.length} cobros de esta semana (${total(ready)}) ya tienen la plata separada.` });
 
+  // Plata que ya debía haber llegado y no está marcada: no cuenta hasta que la marques.
+  for (const i of now.incomes.filter(x => !x.done && x.date <= t)) {
+    out.push({ tone: 'warn', q: cur, text: `¿Ya te llegó <b>${esc(i.concept)}</b> (${fmt(i.amount)}, ${fmtDate(i.date)})? Márcalo para que cuente en lo libre.` });
+  }
   if (!now.start.set && !now.start.carried) out.push({ tone: 'warn', q: cur, text: 'Aún no pusiste con cuánto arrancas esta quincena. Sin eso, los números no son reales.' });
 
   for (const bud of now.budgets) {
@@ -50,8 +54,10 @@ export function alerts(s) {
 
   for (let i = 0; i < 6; i++) {
     const q = qShift(cur, i);
-    const libre = (i === 0 ? now : i === 1 ? next : build(s, q)).totals.libre;
-    if (libre < 0) out.push({ tone: 'neg', q, text: `En <b>${qTitle(q)}</b> te faltan ${fmt(-libre)} para cubrir todo. Mejor ajustarlo desde ya.` });
+    const bt = (i === 0 ? now : i === 1 ? next : build(s, q)).totals;
+    const libre = bt.libre;
+    if (libre < 0 && bt.libreSiLlega >= 0 && bt.sinLlegar > 0) out.push({ tone: 'warn', q, text: `En <b>${qTitle(q)}</b> estás en ${fmt(libre)} hasta que llegue lo que falta (${fmt(bt.sinLlegar)}). Márcalo cuando entre.` });
+    else if (libre < 0) out.push({ tone: 'neg', q, text: `En <b>${qTitle(q)}</b> te faltan ${fmt(-libre)} para cubrir todo. Mejor ajustarlo desde ya.` });
   }
   return out;
 }
@@ -96,7 +102,7 @@ export function inicioView(ctx) {
   const sumBy = f => both.reduce((a, b) => a + f(b), 0);
   const byType = type => sumBy(b => b.payments.filter(p => p.src.type === type).reduce((a, p) => a + p.amount, 0));
   const month = {
-    entra: sumBy(b => b.totals.ingresos),
+    entra: sumBy(b => b.totals.ingresosPlan),
     fijos: byType('fixed') + byType('account'),
     deudas: byType('debt'),
     otros: byType('movement'),
@@ -122,6 +128,7 @@ export function inicioView(ctx) {
   <a class="hero hero-link-card ${now.totals.libre < 0 ? 'neg' : ''}" href="#quincena" data-act="go-q" data-q="${cur}">
     <p class="label">Libre esta quincena</p>
     <p class="big">${fmt(now.totals.libre)}</p>
+    ${now.totals.sinLlegar > 0 ? `<p class="sub">Faltan por llegar ${fmt(now.totals.sinLlegar)} · cuando los marques quedas en <b>${fmt(now.totals.libreSiLlega)}</b></p>` : ''}
     <p class="sub">${nextIncome
       ? `Próxima plata: <b>${esc(nextIncome.concept)} ${fmt(nextIncome.amount)}</b> ${inDays(daysBetween(t, nextIncome.date))} (${fmtDate(nextIncome.date)})`
       : 'Ver la quincena →'}</p>
