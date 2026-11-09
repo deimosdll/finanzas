@@ -1,14 +1,14 @@
 // Las 4 pantallas (Quincena, ¿Me alcanza?, Plan, Cuentas) y lo que pasa al tocar cada cosa.
 
 import { fmt, fmtUsd, fmtDate, esc, today, iso, parseMoney, fmtPlain } from './money.js';
-import { qOf, qShift, qTitle, qSubtitle, build, afford, debtStatus, monthlyFixed, ensureRec, toCop, goalStatus, goalSaved, pocketName } from './quincena.js';
+import { qOf, qShift, qTitle, qSubtitle, build, afford, debtStatus, monthlyFixed, ensureRec, toCop, goalStatus, goalSaved, pocketName, debtSchedule, isDone } from './quincena.js';
 import { inicioView } from './inicio.js';
 import { nubeSection, atajosSection, nubeActions } from './nube.js';
 import { openForm, openMenu, toast } from './forms.js';
 import { uid, exportJson, parseImport, emptyState } from './store.js';
 
 // Igual al número de VERSION en sw.js: así se ve en Cuentas qué versión tiene cada dispositivo.
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 
 // ---------- Piezas comunes ----------
 
@@ -308,6 +308,8 @@ function planView(ctx) {
       <div class="muted small">${st.left
         ? `${st.left === 1 ? 'Falta 1 pago' : `Faltan ${st.left} pagos`} · próximo ${fmtDate(st.next.date)} por ${fmt(st.next.amount)} · último ${fmtDate(st.last, true)}`
         : 'Sin pagos pendientes'}</div>
+      ${d.mode === 'pagos' && d.cutDay && st.left ? `<ul class="card-months">${debtSchedule(d).filter(p => !isDone(s, `debt:${d.id}:${p.date}`, p.date)).map(p =>
+        `<li><span>${esc(p.period.label[0].toUpperCase() + p.period.label.slice(1))} <span class="muted">→ se paga el ${fmtDate(p.date)}</span></span><span>${fmt(p.amount)}</span></li>`).join('')}</ul>` : ''}
     </button></li>`;
   }).join('')}</ul>
     ${lastDebt ? `<p class="goal">Si cumples los pagos, quedas <b>sin deudas el ${fmtDate(lastDebt, true)}</b>.</p>` : `<p class="goal">No tienes pagos de deudas pendientes.</p>`}`
@@ -469,7 +471,9 @@ function debtForm(ctx, d, modeOverride) {
     { name: 'accountId', label: 'Se paga desde', type: 'select', value: d.accountId, options: accountOptions(ctx.s) },
   ];
   const fields = mode === 'pagos'
-    ? [...common, { name: 'payments', label: 'Pagos que faltan', type: 'payments', value: d.payments, hint: 'Una fila por pago: fecha límite y monto.' }]
+    ? [...common,
+      { name: 'cutDay', label: 'Día de corte (si es tarjeta)', type: 'number', value: d.cutDay, min: 1, max: 31, placeholder: 'Opcional', hint: 'Así cada pago dice de qué mes son las compras. Ejemplo: corte el 28 → el pago del 18 nov es de las compras de octubre.' },
+      { name: 'payments', label: 'Pagos que faltan', type: 'payments', value: d.payments, hint: 'Una fila por pago: fecha límite y monto.' }]
     : [...common,
       { name: 'amount', label: 'Valor de la cuota', type: 'money', value: d.amount, required: true },
       { name: 'day', label: 'Día del mes en que se paga', type: 'number', value: d.day, min: 1, max: 31, required: true },
@@ -490,6 +494,7 @@ function debtForm(ctx, d, modeOverride) {
     extra: [{ label: mode === 'pagos' ? 'Cambiar a cuotas iguales' : 'Cambiar a pagos distintos', onClick: v => debtForm(ctx, isNew ? null : { ...d, ...v }, mode === 'pagos' ? 'cuota' : 'pagos') }],
     onSubmit: v => {
       if (mode === 'pagos' && !v.payments.length) return 'Agrega al menos un pago con fecha y monto.';
+      if (mode === 'pagos' && v.cutDay != null && !(v.cutDay >= 1 && v.cutDay <= 31)) return 'El día de corte debe estar entre 1 y 31.';
       if (mode === 'cuota' && v.until < v.first) return 'El último pago no puede ser antes del primero.';
       ctx.commit(s => {
         const { r1Goal, r1Amount, r2Goal, r2Amount, ...rest } = v;

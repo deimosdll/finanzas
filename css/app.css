@@ -459,3 +459,6 @@ code.wrap, .code-row code { word-break: break-all; }
 .transfer .flow { font-weight: 500; }
 .transfer .arrow { color: var(--accent); }
 .block { display: block; margin-top: 2px; }
+
+.card-months { list-style: none; margin: 8px 0 0; padding: 8px 0 0; border-top: 0.5px solid var(--line); }
+.card-months li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; border: 0; }

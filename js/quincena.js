@@ -78,12 +78,22 @@ export function isDone(s, key, date) {
   return !!s.quincenas[qOf(date)]?.checks?.[key]?.done;
 }
 
+// Tarjeta con día de corte: el pago del 18 nov cubre las compras hasta el corte anterior (28 oct).
+export function cardPeriod(d, date) {
+  const cut = Number(d.cutDay);
+  if (d.mode !== 'pagos' || !cut || !date) return null;
+  let [y, m, day] = date.split('-').map(Number);
+  if (cut >= day) { m--; if (m < 1) { m = 12; y--; } }
+  const cd = Math.min(cut, daysInMonth(y, m - 1));
+  return { month: MESES_LARGO[m - 1], cut: `${cd} ${MESES[m - 1]}`, label: `compras de ${MESES_LARGO[m - 1]} (corte ${cd} ${MESES[m - 1]})` };
+}
+
 // Todas las fechas de pago de una deuda (de principio a fin).
 export function debtSchedule(d) {
   if (d.mode === 'pagos') {
     return (d.payments || [])
       .filter(p => p.date && p.amount)
-      .map(p => ({ date: p.date, amount: Number(p.amount) }))
+      .map(p => ({ date: p.date, amount: Number(p.amount), period: cardPeriod(d, p.date) }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }
   // Cuota fija: un pago al mes, el "día", desde el primer pago pendiente hasta el último.
@@ -272,7 +282,8 @@ export function build(s, q, depth = 0) {
   for (const d of s.debts) {
     for (const p of debtSchedule(d)) {
       if (p.date < r.start || p.date > r.end) continue;
-      payments.push(item(`debt:${d.id}:${p.date}`, p.date, d.name, d.accountId, p.amount, { type: 'debt', id: d.id }));
+      const concept = p.period ? `${d.name} · ${p.period.label}` : d.name;
+      payments.push(item(`debt:${d.id}:${p.date}`, p.date, concept, d.accountId, p.amount, { type: 'debt', id: d.id }));
     }
   }
   for (const a of s.accounts) {
